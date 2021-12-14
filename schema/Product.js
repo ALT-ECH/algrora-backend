@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const Category = require("./Category");
 
 const Schema = mongoose.Schema;
 
@@ -13,23 +14,31 @@ const productSchema = new Schema({
 	store: {
 		type: Schema.Types.ObjectId,
 		ref: "store",
-		required: [true, "store field is required"],
+		required: [true, "store is required"],
 	},
 	description: {
 		type: String,
-		required: [true, "description is required. must be > 20 and < 2000"],
-		minLength: 20,
-		maxLength: 2000,
+		required: [true, "description is required"],
+		minLength: [20, "description must be long than 20 characters"],
+		maxLength: [2000, "description must not be more than 2000 characters"],
 	},
 	price: {
 		type: Number,
 		required: [true, "price is required"],
 	},
-	tag: {
+	tags: {
 		type: [String],
 		validate: {
-			validator: (v) => Array.isArray(v) && v.length > 0,
-			message: (props) => `${props.value} must contain atleast one tag`,
+			validator: async (v) => {
+				if (!Array.isArray(v)) return false;
+				if (!v.length) return false;
+				for (let value of v) {
+					const category = await Category.find({ name: value });
+					if (!category) return false;
+				}
+				return true;
+			},
+			message: (props) => `${props.value} is invalid`,
 		},
 	},
 	extraData: [
@@ -42,6 +51,12 @@ const productSchema = new Schema({
 					message: (props) => `${props.value} must be a string and is required`,
 				},
 			},
+		},
+	],
+	comments: [
+		{
+			type: Schema.Types.ObjectId,
+			ref: "comment",
 		},
 	],
 });

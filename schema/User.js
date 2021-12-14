@@ -5,12 +5,16 @@ const userSchema = new Schema({
 	imageUri: String,
 	username: {
 		type: String,
+		index: true,
+		unique: true,
 		required: [true, "username is required"],
-		minLength: [3, "cannot be smaller than 3 words"],
-		maxLength: [3, "cannot be bigger than 15 words"],
+		minLength: [3, "cannot be smaller than 3 characters"],
+		maxLength: [15, "cannot be bigger than 15 characters"],
 	},
 	emailAddress: {
 		type: String,
+		index: true,
+		unique: true,
 		required: [true, "emailAddress required"],
 		validate: {
 			validator: (v) => {
@@ -48,7 +52,6 @@ const userSchema = new Schema({
 		ref: "store",
 	},
 });
-
 const User = mongoose.model("user", userSchema);
 
 module.exports = User;
