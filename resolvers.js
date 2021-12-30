@@ -9,6 +9,7 @@ const Category = require("./schema/Category");
 const Comment = require("./schema/Comment");
 
 const { getTime } = require("./utilities");
+const Order = require("./schema/Order");
 
 const resolvers = {
 	Product: {
@@ -31,6 +32,20 @@ const resolvers = {
 		user: async (parent) => {
 			const { user } = await parent.populate("user");
 			return user;
+		},
+	},
+	Order: {
+		user: async (parent) => {
+			const { user } = await parent.populate("user");
+			return user;
+		},
+		product: async (parent) => {
+			const { product } = await parent.populate("product");
+			return product;
+		},
+		store: async (parent) => {
+			const { store } = await parent.populate("store");
+			return store;
 		},
 	},
 	Query: {
@@ -63,9 +78,13 @@ const resolvers = {
 		getCategories: async () => {
 			return await Category.find({});
 		},
+		getOrders: async (_, { type }, { userData }) => {
+			if (type == "USER") return await Order.find({ userId: userData.id });
+			return await Order.find({ storeId: userData.storeId });
+		},
 	},
 	Mutation: {
-		addUser: async (parent, args, { secret }) => {
+		addUser: async (_, args, { secret }) => {
 			console.log("adding user");
 			const password = await bcrypt.hash(args.password, 12);
 			const user = new User({
@@ -216,6 +235,62 @@ const resolvers = {
 					message: "successfully added comment",
 					comment: returnData,
 				};
+			} catch (err) {
+				const base = err.errors;
+				const keys = Object.keys(base);
+				const message = base[keys[0]].properties.message;
+				return {
+					status: "failed",
+					message: `${keys[0]} ${message}`,
+				};
+			}
+		},
+		placeOrder: async (_, { orders }, { userData }) => {
+			const user = await User.findById(userData.id);
+			if (!user) return { status: "failed" };
+			const orderList = [];
+			for (item of orders) {
+				const { productId, storeId, quantity } = item;
+				const product = await Product.findById(productId);
+				const store = await Store.findById(storeId);
+
+				const newOrder = new Order({
+					user: user._id,
+					product: product._id,
+					store: store._id,
+					quantity,
+					uploadTime: getTime(),
+					updatedTime: getTime(),
+				});
+
+				orderList.push(newOrder);
+			}
+			try {
+				Order.insertMany(orderList, (err) => {
+					// better error handling here
+					if (err) return { status: "failed", message: err };
+					return "successful";
+				});
+				return { status: "success" };
+			} catch (err) {
+				const base = err.errors;
+				const keys = Object.keys(base);
+				const message = base[keys[0]].properties.message;
+				return {
+					status: "failed",
+					message: `${keys[0]} ${message}`,
+				};
+			}
+		},
+		updateOrder: async (_, { orderId, order }, { userData }) => {
+			let orderData = await Order.findById(orderId);
+			for (key in order) {
+				// type - "STORE", "USER" = functionality is not implemented yet
+				if (order[key]) orderData[key] = order[key];
+			}
+			try {
+				await orderData.save();
+				return { status: "success", orders: [orderData] };
 			} catch (err) {
 				const base = err.errors;
 				const keys = Object.keys(base);

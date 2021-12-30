@@ -51,6 +51,10 @@ const typeDefs = gql`
 		rating: [Rating]!
 		comments: [Comment]!
 	}
+	type Category {
+		name: String!
+		description: String!
+	}
 	type KeyValue {
 		key: String
 		values: [String]!
@@ -66,14 +70,15 @@ const typeDefs = gql`
 		id: String!
 		user: User!
 		product: Product!
+		quantity: Int!
 		store: Store!
-		addTime: String!
+		uploadTime: String!
+		updatedTime: String!
+		meetTime: String
+		details: String
+		status: String
+		message: String
 	}
-	type Category {
-		name: String!
-		description: String!
-	}
-	# order reply to be made
 	type StoreMessage {
 		status: String!
 		message: String
@@ -94,6 +99,11 @@ const typeDefs = gql`
 		message: String
 		comment: Comment
 	}
+	type OrdersMessage {
+		status: String!
+		message: String
+		orders: [Order]
+	}
 	input ProductInput {
 		imageUri: String
 		name: String!
@@ -101,13 +111,29 @@ const typeDefs = gql`
 		price: String!
 		tags: [String!]!
 	}
+	input OrderInput {
+		productId: String!
+		storeId: String!
+		quantity: Int!
+	}
+	input OrderDetails {
+		meetTime: String
+		details: String
+		status: String
+		message: String
+	}
+	enum Type {
+		USER
+		STORE
+	}
 	type Query {
 		hello: String
 		getProducts: [Product]
 		getProduct(id: ID): Product!
 		user: User
-		getStore(id: ID!): StoreMessage
+		getStore(id: ID!): StoreMessage!
 		getCategories: [Category]!
+		getOrders(type: Type!): [Order]!
 	}
 	type Mutation {
 		addUser(
@@ -124,6 +150,12 @@ const typeDefs = gql`
 		): StoreMessage
 		addProduct(product: ProductInput): ProductMessage!
 		addComment(id: ID!, comment: String!): CommentMessage!
+		placeOrder(orders: [OrderInput]!): OrdersMessage!
+		updateOrder(
+			type: Type!
+			orderId: String!
+			order: OrderDetails!
+		): OrdersMessage!
 	}
 `;
 
