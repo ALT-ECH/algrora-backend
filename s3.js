@@ -27,4 +27,19 @@ const s3Sign = async (filename, fileType) => {
 	return uploadURL;
 };
 
-module.exports.s3Sign = s3Sign;
+const s3Delete = async (filename) => {
+	const params = {
+		Bucket: bucketName,
+		Key: filename,
+	};
+	s3.deleteObject(params, (err, data) => {
+		if (err) return console.log("err", err);
+		console.log("data", data);
+	});
+};
+
+// s3Delete("2022-01-01~shny9~photo__aacbe.jpeg");
+module.exports = {
+	s3Sign,
+	s3Delete,
+};

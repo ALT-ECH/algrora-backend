@@ -1,6 +1,6 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
-const { s3Sign } = require("./s3");
+const { s3Sign, s3Delete } = require("./s3");
 
 const Product = require("./schema/Product");
 const User = require("./schema/User");
@@ -41,6 +41,8 @@ const resolvers = {
 		},
 		product: async (parent) => {
 			const { product } = await parent.populate("product");
+			console.log("product", product);
+			if (!product) return {};
 			return product;
 		},
 		store: async (parent) => {
@@ -50,6 +52,14 @@ const resolvers = {
 	},
 	Query: {
 		hello: () => "graphql connected",
+		search: async (_, { search }) => {
+			const escapeRegex = (text) => {
+				return text.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+			};
+			const regex = new RegExp(escapeRegex(search), "gi");
+			const results = Product.find({ name: regex });
+			return results;
+		},
 		getProducts: async () => {
 			console.log("getting products");
 			return await Product.find({});
@@ -79,8 +89,10 @@ const resolvers = {
 			return await Category.find({});
 		},
 		getOrders: async (_, { type }, { userData }) => {
+			console.log("type", type);
 			if (type == "USER") return await Order.find({ userId: userData.id });
-			return await Order.find({ storeId: userData.storeId });
+			const order = await Order.find({ storeId: userData.storeId });
+			return order;
 		},
 	},
 	Mutation: {
@@ -152,8 +164,8 @@ const resolvers = {
 				console.log(err);
 			}
 		},
-		signS3: (parent, { filename, fileType }) => {
-			const uploadUrl = s3Sign(filename, fileType);
+		signS3: async (parent, { filename, fileType }) => {
+			const uploadUrl = await s3Sign(filename, fileType);
 			return uploadUrl;
 		},
 		addStore: async (_, args, { userData }) => {
@@ -175,6 +187,35 @@ const resolvers = {
 					message: `${storeData._id}`,
 					store: storeData,
 				};
+			} catch (err) {
+				const base = err.errors;
+				const keys = Object.keys(base);
+				const message = base[keys[0]].properties.message;
+				return {
+					status: "failed",
+					message: `${keys[0]} ${message}`,
+				};
+			}
+		},
+		updateStore: async (_, { id, store }, { userData }) => {
+			console.log("updating store");
+			const user = User.findById(userData.id);
+			if (!user) return { status: "failed" };
+			const storeData = await Store.findById(id);
+			if (store.imageUri) {
+				const imageUri = storeData.imageUri;
+				const imageUriList = imageUri.split("/");
+				const filename = `${imageUriList.at(-2)}/${imageUriList.at(-1)}`;
+				await s3Delete(filename);
+			}
+			for (p in store) {
+				if (store[p]) {
+					storeData[p] = store[p];
+				}
+			}
+			try {
+				await storeData.save();
+				return { status: "success" };
 			} catch (err) {
 				const base = err.errors;
 				const keys = Object.keys(base);
@@ -216,6 +257,69 @@ const resolvers = {
 					status: "failed",
 					message: `${keys[0]} ${message}`,
 				};
+			}
+		},
+		updateProduct: async (_, { id, product }, { userData }) => {
+			console.log("updating product");
+			const user = User.findById(userData.id);
+			if (!user) return { status: "failed" };
+			const productData = await Product.findById(id);
+			if (product.imageUri) {
+				const imageUri = productData.imageUri;
+				const imageUriList = imageUri.split("/");
+				const filename = `${imageUriList.at(-2)}/${imageUriList.at(-1)}`;
+				await s3Delete(filename);
+			}
+			for (p in product) {
+				if (product[p]) {
+					productData[p] = product[p];
+				}
+			}
+			try {
+				await productData.save();
+				return { status: "success" };
+			} catch (err) {
+				const base = err.errors;
+				const keys = Object.keys(base);
+				const message = base[keys[0]].properties.message;
+				return {
+					status: "failed",
+					message: `${keys[0]} ${message}`,
+				};
+			}
+		},
+		deleteProduct: async (_, { id }, { userData }) => {
+			const user = await User.findById(userData.id);
+			if (!user) return { status: "failed", message: "unauthorized" };
+
+			const product = await Product.findById(id);
+			if (!product)
+				return { status: "failed", message: "product doesn't exist" };
+			const imageUri = product.imageUri;
+			const imageUriList = imageUri.split("/");
+			const filename = `${imageUriList.at(-2)}/${imageUriList.at(-1)}`;
+			await s3Delete(filename);
+			const store = await Store.findById(product.store);
+			console.log("product _id", product.id);
+			// clean up store
+			const products = [];
+			for (p of store.products) {
+				const pData = await Product.findOne({ _id: p });
+				if (pData.id !== product.id) products.push(pData._id);
+			}
+			store.products = products;
+			// clean up comments
+			for (comment of product.comments) {
+				Comment.findOneAndDelete({ _id: comment });
+			}
+			try {
+				await store.save();
+				// clean up orders
+				await Order.deleteMany({ product: product._id });
+				await Product.findByIdAndDelete(product.id);
+				return { status: "success" };
+			} catch (err) {
+				return { status: "failed", message: err };
 			}
 		},
 		addComment: async (_, { id, comment }, { userData }) => {
@@ -283,6 +387,8 @@ const resolvers = {
 			}
 		},
 		updateOrder: async (_, { orderId, order }, { userData }) => {
+			const user = await User.findById(userData.id);
+			if (!user) return { status: "failed", message: "unauthorized user" };
 			let orderData = await Order.findById(orderId);
 			for (key in order) {
 				// type - "STORE", "USER" = functionality is not implemented yet
@@ -291,6 +397,27 @@ const resolvers = {
 			try {
 				await orderData.save();
 				return { status: "success", orders: [orderData] };
+			} catch (err) {
+				const base = err.errors;
+				const keys = Object.keys(base);
+				const message = base[keys[0]].properties.message;
+				return {
+					status: "failed",
+					message: `${keys[0]} ${message}`,
+				};
+			}
+		},
+		cancelOrder: async (_, { id }, { userData }) => {
+			const user = await User.findById(userData.id);
+			if (!user) return { status: "failed", message: "unauthorized user" };
+			const order = await Order.findById(id);
+			if (!order) return { status: "failed", message: "invalid order" };
+			order.status = "CANCEL";
+			console.log("here", order);
+			try {
+				const newOrder = await order.save();
+				console.log("newOrder", newOrder);
+				return { status: "success", orders: [order] };
 			} catch (err) {
 				const base = err.errors;
 				const keys = Object.keys(base);

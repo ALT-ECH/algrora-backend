@@ -108,8 +108,13 @@ const typeDefs = gql`
 		imageUri: String
 		name: String!
 		description: String!
-		price: String!
+		price: Int!
 		tags: [String!]!
+	}
+	input StoreInput {
+		name: String!
+		imageUri: String
+		description: String!
 	}
 	input OrderInput {
 		productId: String!
@@ -134,6 +139,7 @@ const typeDefs = gql`
 		getStore(id: ID!): StoreMessage!
 		getCategories: [Category]!
 		getOrders(type: Type!): [Order]!
+		search(search: String!): [Product]!
 	}
 	type Mutation {
 		addUser(
@@ -143,19 +149,28 @@ const typeDefs = gql`
 		): UserMessage
 		login(username: String!, password: String!): UserMessage
 		signS3(filename: String!, fileType: String!): String!
+
 		addStore(
 			name: String!
 			imageUri: String
 			description: String!
 		): StoreMessage
-		addProduct(product: ProductInput): ProductMessage!
+		updateStore(id: ID!, store: StoreInput!): StoreMessage!
+		deleteStore(id: ID!): StoreMessage!
+
+		addProduct(product: ProductInput!): ProductMessage!
+		updateProduct(id: ID!, product: ProductInput!): ProductMessage!
+		deleteProduct(id: ID!): ProductMessage!
+
 		addComment(id: ID!, comment: String!): CommentMessage!
+
 		placeOrder(orders: [OrderInput]!): OrdersMessage!
 		updateOrder(
 			type: Type!
 			orderId: String!
 			order: OrderDetails!
 		): OrdersMessage!
+		cancelOrder(id: ID!): OrdersMessage!
 	}
 `;
 
