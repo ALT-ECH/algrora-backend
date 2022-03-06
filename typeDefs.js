@@ -74,6 +74,8 @@ const typeDefs = gql`
 		store: Store!
 		uploadTime: String!
 		updatedTime: String!
+		lastActive: String!
+		read: Boolean!
 		meetTime: String
 		details: String
 		status: String
@@ -103,6 +105,10 @@ const typeDefs = gql`
 		status: String!
 		message: String
 		orders: [Order]
+	}
+	type ReadMessage {
+		status: String!
+		message: String
 	}
 	input ProductInput {
 		imageUri: String
@@ -170,7 +176,8 @@ const typeDefs = gql`
 			orderId: String!
 			order: OrderDetails!
 		): OrdersMessage!
-		cancelOrder(id: ID!): OrdersMessage!
+		markRead(type: Type!, ids: [ID]!): ReadMessage!
+		cancelOrder(type: Type!, id: ID!): OrdersMessage!
 	}
 `;
 

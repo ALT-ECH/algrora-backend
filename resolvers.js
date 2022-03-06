@@ -7,9 +7,9 @@ const User = require("./schema/User");
 const Store = require("./schema/Store");
 const Category = require("./schema/Category");
 const Comment = require("./schema/Comment");
+const Order = require("./schema/Order");
 
 const { getTime } = require("./utilities");
-const Order = require("./schema/Order");
 
 const resolvers = {
 	Product: {
@@ -41,7 +41,6 @@ const resolvers = {
 		},
 		product: async (parent) => {
 			const { product } = await parent.populate("product");
-			console.log("product", product);
 			if (!product) return {};
 			return product;
 		},
@@ -61,19 +60,19 @@ const resolvers = {
 			return results;
 		},
 		getProducts: async () => {
-			console.log("getting products");
+			// console.log("getting products");
 			return await Product.find({});
 		},
 		getProduct: async (_, { id }) => {
 			return await Product.findById(id);
 		},
 		user: async (_, __, { userData }) => {
-			console.log("getting user");
+			// console.log("getting user");
 			return await User.findById(userData.id);
 		},
 		getStore: async (_, { id }) => {
 			// dosen't function properly
-			console.log("getting store");
+			// console.log("getting store");
 			const storeData = await Store.findById(id);
 			if (!storeData)
 				return {
@@ -89,15 +88,14 @@ const resolvers = {
 			return await Category.find({});
 		},
 		getOrders: async (_, { type }, { userData }) => {
-			console.log("type", type);
-			if (type == "USER") return await Order.find({ userId: userData.id });
-			const order = await Order.find({ storeId: userData.storeId });
-			return order;
+			// console.log("type", type);
+			if (type == "USER") return await Order.find({ user: userData.id });
+			return await Order.find({ store: userData.storeId });
 		},
 	},
 	Mutation: {
 		addUser: async (_, args, { secret }) => {
-			console.log("adding user");
+			// console.log("adding user");
 			const password = await bcrypt.hash(args.password, 12);
 			const user = new User({
 				username: args.username,
@@ -138,7 +136,7 @@ const resolvers = {
 			console.log("logging in user");
 			try {
 				const user = await User.findOne({ username: args.username });
-				console.log("testing going on here");
+				// console.log("testing going on here");
 				if (!user)
 					return {
 						status: "failed",
@@ -161,7 +159,7 @@ const resolvers = {
 					user,
 				};
 			} catch (err) {
-				console.log(err);
+				// console.log(err);
 			}
 		},
 		signS3: async (parent, { filename, fileType }) => {
@@ -198,7 +196,7 @@ const resolvers = {
 			}
 		},
 		updateStore: async (_, { id, store }, { userData }) => {
-			console.log("updating store");
+			// console.log("updating store");
 			const user = User.findById(userData.id);
 			if (!user) return { status: "failed" };
 			const storeData = await Store.findById(id);
@@ -227,7 +225,7 @@ const resolvers = {
 			}
 		},
 		addProduct: async (_, args, { userData }) => {
-			console.log("adding Product");
+			// console.log("adding Product");
 			const { imageUri, name, description, price, tags } = args.product;
 			const product = new Product({
 				name,
@@ -260,7 +258,7 @@ const resolvers = {
 			}
 		},
 		updateProduct: async (_, { id, product }, { userData }) => {
-			console.log("updating product");
+			// console.log("updating product");
 			const user = User.findById(userData.id);
 			if (!user) return { status: "failed" };
 			const productData = await Product.findById(id);
@@ -300,7 +298,7 @@ const resolvers = {
 			const filename = `${imageUriList.at(-2)}/${imageUriList.at(-1)}`;
 			await s3Delete(filename);
 			const store = await Store.findById(product.store);
-			console.log("product _id", product.id);
+			// console.log("product _id", product.id);
 			// clean up store
 			const products = [];
 			for (p of store.products) {
@@ -350,6 +348,9 @@ const resolvers = {
 			}
 		},
 		placeOrder: async (_, { orders }, { userData }) => {
+			// console.log("placing order");
+			const preOrdersList = await Order.find({});
+			// console.log(preOrdersList);
 			const user = await User.findById(userData.id);
 			if (!user) return { status: "failed" };
 			const orderList = [];
@@ -365,16 +366,15 @@ const resolvers = {
 					quantity,
 					uploadTime: getTime(),
 					updatedTime: getTime(),
+					lastActive: "USER",
+					read: false,
 				});
 
 				orderList.push(newOrder);
 			}
 			try {
-				Order.insertMany(orderList, (err) => {
-					// better error handling here
-					if (err) return { status: "failed", message: err };
-					return "successful";
-				});
+				await Order.insertMany(orderList);
+				// console.log("here");
 				return { status: "success" };
 			} catch (err) {
 				const base = err.errors;
@@ -386,12 +386,19 @@ const resolvers = {
 				};
 			}
 		},
-		updateOrder: async (_, { orderId, order }, { userData }) => {
+		updateOrder: async (_, { orderId, order, type }, { userData }) => {
 			const user = await User.findById(userData.id);
 			if (!user) return { status: "failed", message: "unauthorized user" };
 			let orderData = await Order.findById(orderId);
 			for (key in order) {
 				// type - "STORE", "USER" = functionality is not implemented yet
+				orderData.read = false;
+				if (type == "USER") {
+					orderData.lastActive = "USER";
+				} else {
+					orderData.lastActive = "STORE";
+				}
+				orderData.updatedTime = getTime();
 				if (order[key]) orderData[key] = order[key];
 			}
 			try {
@@ -413,10 +420,9 @@ const resolvers = {
 			const order = await Order.findById(id);
 			if (!order) return { status: "failed", message: "invalid order" };
 			order.status = "CANCEL";
-			console.log("here", order);
+			// console.log("here", order);
 			try {
-				const newOrder = await order.save();
-				console.log("newOrder", newOrder);
+				await order.save();
 				return { status: "success", orders: [order] };
 			} catch (err) {
 				const base = err.errors;
@@ -427,6 +433,28 @@ const resolvers = {
 					message: `${keys[0]} ${message}`,
 				};
 			}
+		},
+		markRead: async (_, { type, ids }, { userData }) => {
+			const user = await User.findById(userData.id);
+			if (!user) return { status: "failed", message: "unauthorized uers" };
+			let errorMessage = "";
+			for (const id of ids) {
+				const order = await Order.findById(id);
+				if (order.lastActive !== type) {
+					order.read = true;
+				}
+				await order.save();
+				try {
+					await order.save();
+				} catch (err) {
+					const base = err.errors;
+					const keys = Object.keys(base);
+					const message = base[keys[0]].properties.message;
+					errorMessage += message; // don't actually know if it works
+				}
+			}
+			if (errorMessage) return { status: "failed", message: errorMessage };
+			return { status: "success" };
 		},
 	},
 };

@@ -41,6 +41,15 @@ const orderSchema = new Schema({
 		enum: ["PENDING", "ACCEPTED", "REQUEST ALTERATION", "CANCEL"],
 		default: "PENDING",
 	},
+	lastActive: {
+		type: String,
+		enum: ["USER", "STORE"],
+		required: [true, "sender required"],
+	},
+	read: {
+		type: Boolean,
+		required: true,
+	},
 	message: {
 		type: String,
 		minLength: [10, "details should be more than 10 characters"],
